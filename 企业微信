@@ -1,0 +1,46 @@
+name: 企业微信每日提醒（含天气）
+on:
+  schedule:
+    - cron: '0 1 * * *'  # UTC时间1点（北京时间9点）
+
+jobs:
+  send-message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 获取天气和任务提醒
+        env:
+          QWEATHER_KEY: ${{ secrets.QWEATHER_KEY }}  # 和风天气API密钥
+          LOCATION: 101260708  # 威宁县城市代码
+        run: |
+          # ---------- 第一部分：获取天气数据 ----------
+          weather_data=$(curl -s "https://devapi.qweather.com/v7/weather/now?location=$LOCATION&key=$QWEATHER_KEY")
+          temp=$(echo "$weather_data" | jq -r '.now.temp')
+          text=$(echo "$weather_data" | jq -r '.now.text')
+
+          # 错误处理
+          if [ $? -ne 0 ] || [ -z "$temp" ]; then
+            echo "天气数据获取失败，使用默认消息"
+            temp="N/A"
+            text="数据暂不可用"
+          fi
+
+          # ---------- 第二部分：构建Markdown消息 ----------
+          message="## 📅 今日综合提醒\\n\\n"
+          message+="### 🌦 威宁县天气\\n"
+          message+="- **温度**: ${temp}℃\\n"
+          message+="- **天气**: ${text}\\n\\n"
+          message+="请拍照打卡至相关群\\n"
+          message+="及时点击已派送或已签收\\n"
+          message+="派送完毕全量收取返货\\n\\n"
+          message+="@所有人"
+
+          # ---------- 第三部分：发送到企业微信 ----------
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"msgtype\": \"markdown\",
+              \"markdown\": {
+                \"content\": \"$message\"
+              }
+            }" \
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=6e11c222-b276-49bd-9de9-68d8f207d6e8"
